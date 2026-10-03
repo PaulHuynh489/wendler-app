@@ -48,3 +48,4 @@ textarea { width:100%; background:#2c2c2e; color:var(--fg); border:0; border-rad
 .picker b { font-size:20px; }
 .picker span { color:var(--acc); }
 .picker small { color:var(--mute); }
+.est { margin-top:10px; font-size:14px; color:var(--acc); }

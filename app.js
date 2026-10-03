@@ -40,6 +40,28 @@ const num = v => Math.max(0, Number(v) || 0);
 const configured = () => Object.values(S.lifts).every(l => l.tm > 0);
 const incFor = k => (LOWER[k] ? 2 * step() : step());
 
+// Best estimated 1RM from the last (max-rep) set of any week in the cycle; null if none logged.
+function cycleBest(k, cycle) {
+  let best = null;
+  for (let w = 1; w <= WEEKS; w++) {
+    const v = S.sets[`${cycle}-${w}-${k}-2`];
+    if (v && v.r) best = Math.max(best || 0, e1rm(v.w, v.r));
+  }
+  return best;
+}
+
+function nextTM(k) {
+  const best = cycleBest(k, S.cycle);
+  return best ? round(best * 0.9) : S.lifts[k].tm + incFor(k);
+}
+
+function estHTML(k, week = viewWeek) {
+  const v = S.sets[`${S.cycle}-${week}-${k}-2`];
+  if (!v || !v.r) return '';
+  const est = Math.round(e1rm(v.w, v.r));
+  return `Estimated 1RM: <b>${est} ${S.unit}</b> (${v.w} × ${v.r}) · next cycle training max: <b>${nextTM(k)} ${S.unit}</b>`;
+}
+
 function render() {
   document.querySelectorAll('nav button').forEach(b => b.classList.toggle('active', b.dataset.view === view));
   document.getElementById('title').textContent = `5/3/1 · Cycle ${S.cycle} · Week ${S.week}`;
@@ -120,7 +142,8 @@ function liftCard(k, day) {
       <button class="chk">✓</button></div>`;
   }).join('');
   return `<div class="card"><h2>Day ${day}: ${LIFTS[k]}</h2>
-    <div class="sub">Training max ${S.lifts[k].tm} ${S.unit} · next cycle +${incFor(k)}</div>${warm}${work}
+    <div class="sub">Training max ${S.lifts[k].tm} ${S.unit}</div>${warm}${work}
+    <div class="est" id="est-${k}">${estHTML(k)}</div>
     <textarea data-note="${pre}" placeholder="Notes">${esc(S.notes[pre] || '')}</textarea>
     <button class="btn sec" data-reset="${k}">Reset training max from new rep max</button></div>`;
 }
@@ -185,7 +208,7 @@ function historyHTML() {
 function finishWeek() {
   if (S.week < WEEKS) S.week++;
   else {
-    for (const k of Object.keys(S.lifts)) S.lifts[k].tm += incFor(k);
+    for (const k of Object.keys(S.lifts)) S.lifts[k].tm = nextTM(k);
     S.week = 1; S.cycle++;
   }
   viewWeek = S.week; pick = null; save(); render(); scrollTo(0, 0);
@@ -242,7 +265,7 @@ document.addEventListener('click', e => {
     return;
   }
   if (t.id === 'finish') {
-    if (confirm(S.week === WEEKS ? 'Finish cycle and raise training maxes?' : `Finish week ${S.week}?`)) finishWeek();
+    if (confirm(S.week === WEEKS ? 'Finish cycle? New training maxes:\n' + Object.keys(LIFTS).map(k => `${LIFTS[k]}: ${S.lifts[k].tm} → ${nextTM(k)} ${S.unit}`).join('\n') : `Finish week ${S.week}?`)) finishWeek();
   }
 });
 
@@ -262,6 +285,9 @@ document.addEventListener('change', e => {
   const r = num(entry.querySelector('.sr').value);
   S.sets[entry.dataset.key] = { w, r, d: new Date().toLocaleDateString() };
   save();
+  const [, wk, lift] = entry.dataset.key.split('-');
+  const est = document.getElementById('est-' + lift);
+  if (est) est.innerHTML = estHTML(lift, +wk);
 });
 
 render();
