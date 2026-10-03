@@ -1,0 +1,10 @@
+{
+  "name": "5/3/1 Training",
+  "short_name": "5/3/1",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#111111",
+  "theme_color": "#111111",
+  "icons": [{ "src": "icon-180.png", "sizes": "180x180", "type": "image/png" }]
+}
