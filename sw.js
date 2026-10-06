@@ -1,4 +1,4 @@
-const CACHE = 'wendler-v6';
+const CACHE = 'wendler-v7';
 const FILES = ['./', 'index.html', 'style.css', 'app.js', 'manifest.webmanifest', 'icon-180.png'];
 
 self.addEventListener('install', e => e.waitUntil(caches.open(CACHE).then(c => c.addAll(FILES))));

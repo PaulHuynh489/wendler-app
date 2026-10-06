@@ -22,11 +22,13 @@ const WEEKS = WEEK_NAMES.length;
 
 const KEY = 'wendler531';
 const defaults = () => ({
-  unit: 'lb', option: 1, cycle: 1, week: 1, rest: 120,
+  unit: 'lb', option: 1, cycle: 0, week: 1, rest: 120, phase: 'idle', pending: {},
   lifts: Object.fromEntries(Object.keys(LIFTS).map(k => [k, { tm: 0 }])),
   done: {}, sets: {}, notes: {},
 });
-let S = Object.assign(defaults(), JSON.parse(localStorage.getItem(KEY) || '{}'));
+const stored = JSON.parse(localStorage.getItem(KEY) || '{}');
+let S = Object.assign(defaults(), stored);
+if (stored.cycle && !stored.phase) S.phase = 'active'; // data saved before cycles were started manually
 if (S.week > WEEKS) S.week = 1;
 let view = 'workout';
 let pick = null;
@@ -64,7 +66,8 @@ function estHTML(k, week = viewWeek) {
 
 function render() {
   document.querySelectorAll('nav button').forEach(b => b.classList.toggle('active', b.dataset.view === view));
-  document.getElementById('title').textContent = `5/3/1 · Cycle ${S.cycle} · Week ${S.week}`;
+  const title = S.phase === 'active' ? `Cycle ${S.cycle} · Week ${S.week}` : S.cycle ? `Cycle ${S.cycle} complete` : 'No active cycle';
+  document.getElementById('title').textContent = `5/3/1 · ${title}`;
   const app = document.getElementById('app');
   if (view === 'setup' || !configured()) { view = 'setup'; app.innerHTML = setupHTML(); }
   else if (view === 'history') app.innerHTML = historyHTML();
@@ -108,7 +111,34 @@ function setsFor(lift, week) {
   return OPTIONS[S.option][week - 1].map(([p, r]) => ({ pct: p, reps: r, weight: round(tm * p / 100) }));
 }
 
+function idleHTML() {
+  const rows = Object.keys(LIFTS).map(k => {
+    const next = S.cycle ? (S.pending[k] || S.lifts[k].tm) : S.lifts[k].tm;
+    const change = S.cycle ? `${S.lifts[k].tm} → <b>${next}</b>` : `<b>${next}</b>`;
+    return `<div class="hist"><span>${LIFTS[k]}</span><span>${change} ${S.unit}</span></div>`;
+  }).join('');
+  const head = S.cycle ? `Cycle ${S.cycle} complete` : 'Ready to begin';
+  const note = S.cycle ? 'Training maxes for the next cycle, from your estimated 1RMs:' : 'Starting training maxes:';
+  return `<div class="card"><h2>${head}</h2><div class="sub">${note}</div>${rows}
+    <button class="btn" id="startCycle">Start Cycle ${S.cycle + 1}</button></div>`;
+}
+
+function startCycle() {
+  if (S.cycle) for (const k of Object.keys(S.lifts)) S.lifts[k].tm = S.pending[k] || S.lifts[k].tm;
+  S.cycle++; S.week = 1; S.phase = 'active'; S.pending = {};
+  viewWeek = 1; pick = null; save(); render(); scrollTo(0, 0);
+}
+
+let toastTimer = null;
+function toast(html) {
+  const el = document.getElementById('toast');
+  el.innerHTML = html; el.hidden = false;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { el.hidden = true; }, 8000);
+}
+
 function workoutHTML() {
+  if (S.phase !== 'active') return idleHTML();
   const weeks = WEEK_NAMES.map((n, i) => `<button data-week="${i + 1}" class="${viewWeek === i + 1 ? 'active' : ''} ${S.week === i + 1 ? 'cur' : ''}">W${i + 1}<br><small>${n}</small></button>`).join('');
   const cards = pick
     ? `<button class="btn sec" data-pick="">← All muscles</button>${liftCard(pick, ORDER.indexOf(pick) + 1)}`
@@ -208,8 +238,8 @@ function historyHTML() {
 function finishWeek() {
   if (S.week < WEEKS) S.week++;
   else {
-    for (const k of Object.keys(S.lifts)) S.lifts[k].tm = nextTM(k);
-    S.week = 1; S.cycle++;
+    S.pending = Object.fromEntries(Object.keys(S.lifts).map(k => [k, nextTM(k)]));
+    S.phase = 'idle'; S.week = 1;
   }
   viewWeek = S.week; pick = null; save(); render(); scrollTo(0, 0);
 }
@@ -264,8 +294,9 @@ document.addEventListener('click', e => {
     if (confirm('Erase all settings and history?')) { S = defaults(); viewWeek = 1; save(); render(); }
     return;
   }
+  if (t.id === 'startCycle') { startCycle(); return; }
   if (t.id === 'finish') {
-    if (confirm(S.week === WEEKS ? 'Finish cycle? New training maxes:\n' + Object.keys(LIFTS).map(k => `${LIFTS[k]}: ${S.lifts[k].tm} → ${nextTM(k)} ${S.unit}`).join('\n') : `Finish week ${S.week}?`)) finishWeek();
+    if (confirm(S.week === WEEKS ? `Finish Cycle ${S.cycle}?` : `Finish week ${S.week}?`)) finishWeek();
   }
 });
 
@@ -288,6 +319,9 @@ document.addEventListener('change', e => {
   const [, wk, lift] = entry.dataset.key.split('-');
   const est = document.getElementById('est-' + lift);
   if (est) est.innerHTML = estHTML(lift, +wk);
+  if (r && entry.dataset.key.endsWith('-2')) {
+    toast(`<b>${LIFTS[lift]}: ${w} × ${r}</b><br>New estimated max: <b>${Math.round(e1rm(w, r))} ${S.unit}</b><br>Next cycle training max: <b>${nextTM(lift)} ${S.unit}</b>`);
+  }
 });
 
 render();
